@@ -10,7 +10,7 @@ const db = new pg.Pool({
 
 async function seed() {
   try {
-    console.log("🌱 Upserting CHOXA INTERNET hotspot plans...");
+    console.log("🌱 Upserting ONWEN INTERNET hotspot plans...");
 
     // Ensure columns exist on plans table and mikrotik_profile is wide enough
     await db.query(`
@@ -45,7 +45,7 @@ async function seed() {
     // Reset primary key sequence to start after highest id
     await db.query("SELECT setval('plans_id_seq', (SELECT COALESCE(MAX(id), 1) FROM plans))");
 
-    console.log("✅ CHOXA INTERNET plans seeded successfully!");
+    console.log("✅ ONWEN INTERNET plans seeded successfully!");
   } catch (e) {
     console.error("❌ Error seeding database:", e);
   } finally {

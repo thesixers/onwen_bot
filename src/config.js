@@ -1,8 +1,8 @@
 export const config = {
   ispName: process.env.ISP_NAME || "ONWEN NET",
   hotspotSsid: process.env.HOTSPOT_SSID || "ONWEN-NET",
-  portalUrl: process.env.PORTAL_URL || "choxa.wifi",
-  supportPhone: process.env.SUPPORT_PHONE || "07068380792",
+  portalUrl: process.env.PORTAL_URL || "10.0.0.1",
+  supportPhone: process.env.SUPPORT_PHONE || "",
   adminPhones: (process.env.ADMIN_PHONE || "")
     .split(",")
     .map((p) => p.trim().replace(/^\+/, ""))

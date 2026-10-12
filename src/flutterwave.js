@@ -26,17 +26,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * @returns {Promise<{ txRef: string, accountNumber: string, bankName: string, accountName: string }>}
  */
 export async function createDynamicVirtualAccount(phone, amount, planName) {
-  const ispPhone = (config.adminPhones[0] || "07068380792").replace(/^234/, "0");
+  const ispPhone = (config.adminPhones[0] || "2347052350180").replace(/^234/, "0");
   const narration = `${config.ispName} ${planName}`;
 
   const reqBody = {
-    email: process.env.FLW_EMAIL || "billing@choxa.net",
+    email: process.env.FLW_EMAIL || "",
     is_permanent: false,
     amount,
     currency: "NGN",
     narration,
     phonenumber: ispPhone,
-    firstname: config.ispName.split(" ")[0] || "CHOXA",
+    firstname: config.ispName.split(" ")[0] || "ONWEN",
     lastname: config.ispName.split(" ")[1] || "INTERNET",
     frequency: 1,
   };

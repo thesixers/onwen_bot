@@ -45,9 +45,9 @@ const reqObject = {
 // };
 
 async function createDynamicVirtualAccount(phone, amount, planName) {
-  const email = `ikedichimo@gmail.com`;
+  const email = process.env.FLW_EMAIL || "";
     const txRef = uuidv4();
-    const chuloPhone = process.env.ADMIN_PHONE.split(",")[0].replace("234", "0") || "08112677404";
+    const chuloPhone = process.env.ADMIN_PHONE.split(",")[0].replace("234", "0") || "07052350180";
     const resOBJ = {
         email,
         is_permanent: false,
@@ -113,3 +113,4 @@ export async function verifyPayment(txRef, amount) {
 
 verifyPayment("cc5dc086-af47-49dc-8f1f-6b5685eea38y", 1000)
 
+createDynamicVirtualAccount("07043952140", 1000, "1 hour")
