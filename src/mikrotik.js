@@ -52,7 +52,7 @@ export function resolveDurationStr(plan) {
     return String(plan.duration_str).trim();
   }
   const days = Number(plan?.duration_days);
-  if (days === 0.04 || plan?.name?.toLowerCase().includes("hour")) {
+  if (days === 0.04 || days === 0.042 || plan?.name?.toLowerCase().includes("hour")) {
     return "0d 01:00:00";
   }
   if (!isNaN(days) && days > 0) {
@@ -70,12 +70,23 @@ export function resolveDurationStr(plan) {
 export function calculateExpiryDate(plan, fromDate = new Date()) {
   const expiry = new Date(fromDate);
   const durStr = resolveDurationStr(plan);
-  if (durStr && durStr.includes("01:00:00")) {
-    expiry.setHours(expiry.getHours() + 1);
-  } else {
-    const days = Number(plan?.duration_days) || 1;
-    expiry.setTime(expiry.getTime() + days * 24 * 60 * 60 * 1000);
+  if (durStr) {
+    const match = durStr.match(/(?:(\d+)d)?\s*(\d{1,2}):(\d{2}):(\d{2})/);
+    if (match) {
+      const d = parseInt(match[1] || "0", 10);
+      const h = parseInt(match[2] || "0", 10);
+      const m = parseInt(match[3] || "0", 10);
+      const s = parseInt(match[4] || "0", 10);
+      const totalMs = (d * 86400 + h * 3600 + m * 60 + s) * 1000;
+      if (totalMs > 0) {
+        expiry.setTime(expiry.getTime() + totalMs);
+        return expiry;
+      }
+    }
   }
+
+  const days = Number(plan?.duration_days) || 1;
+  expiry.setTime(expiry.getTime() + Math.round(days * 24 * 60 * 60 * 1000));
   return expiry;
 }
 

@@ -162,81 +162,44 @@ app.post("/webhook/flutterwave", async (req, res) => {
 
   console.log(event);
 
-  if (process.env.NODE_ENV == "production") {
-    // v3 bank transfer webhook: status and tx_ref are inside event.data
-    const data = event.data || {};
+  const data = event.data || {};
+  const eventType = event["event.type"] || event.event || data.event_type;
+  const status = (data.status || event.status || "").toLowerCase();
+  const txRef = data.tx_ref || event.txRef || event.tx_ref;
+  const amountPaid = Number(data.amount || event.amount || 0);
 
-    if (
-      event["event.type"] === "BANK_TRANSFER_TRANSACTION" &&
-      data.status === "successful"
-    ) {
-      const txRef = data.tx_ref;
-      const amountPaid = Number(data.amount || 0);
-
-      if (!txRef) {
-        req.log.error("Webhook: missing tx_ref in event.data");
-        return;
-      }
-
-      try {
-        const paymentRes = await db.query(
-          `
-                SELECT u.* FROM payments p
-                JOIN users u ON u.id = p.user_id
-                WHERE p.virtual_account_reference = $1 AND p.status = 'pending'
-                LIMIT 1
-            `,
-          [txRef],
-        );
-
-        const user = paymentRes.rows[0];
-
-        if (user) {
-          await fulfillPayment(db, user, amountPaid);
-        } else {
-          req.log.warn(
-            { txRef },
-            "Webhook: no pending payment found for txRef",
-          );
-        }
-      } catch (error) {
-        req.log.error({ error }, "Webhook Fulfillment Error");
-      }
+  if (
+    eventType === "BANK_TRANSFER_TRANSACTION" &&
+    status === "successful"
+  ) {
+    if (!txRef) {
+      req.log.error("Webhook: missing tx_ref/txRef in event payload");
+      return;
     }
-  } else {
-    // v3 bank transfer webhook: flat payload, event type in "event.type" key
-    if (
-      event["event.type"] === "BANK_TRANSFER_TRANSACTION" &&
-      event.status === "successful"
-    ) {
-      const txRef = event.txRef;
-      const amountPaid = Number(event.amount || 0);
 
-      try {
-        const paymentRes = await db.query(
-          `
-                SELECT u.* FROM payments p
-                JOIN users u ON u.id = p.user_id
-                WHERE p.virtual_account_reference = $1 AND p.status = 'pending'
-                LIMIT 1
-            `,
-          [txRef],
+    try {
+      const paymentRes = await db.query(
+        `
+              SELECT u.* FROM payments p
+              JOIN users u ON u.id = p.user_id
+              WHERE p.virtual_account_reference = $1 AND p.status = 'pending'
+              LIMIT 1
+          `,
+        [txRef],
+      );
+
+      const user = paymentRes.rows[0];
+
+      if (user) {
+        await fulfillPayment(db, user, amountPaid);
+      } else {
+        req.log.warn(
+          { txRef },
+          "Webhook: no pending payment found for txRef",
         );
-
-        const user = paymentRes.rows[0];
-
-        if (user) {
-          await fulfillPayment(db, user, amountPaid);
-
-        } else {
-          req.log.warn(
-            { txRef },
-            "Webhook: no pending payment found for txRef",
-          );
-        }
-      } catch (error) {
-        req.log.error({ error }, "Webhook Fulfillment Error");
       }
+    } catch (error) {
+      req.log.error({ error }, "Webhook Fulfillment Error");
     }
   }
 });
@@ -252,17 +215,6 @@ app.listen(process.env.PORT || 3001, async () => {
   // 3. Start bots in background
   startBot().catch(err => console.error("❌ Error starting bots:", err));
 
-  // Provisioning retry scheduler — checks every 60s for queued MikroTik jobs
-  setInterval(async () => {
-    try {
-      await processPendingQueue(db);
-    } catch (err) {
-      console.error("⚠️ Provisioning queue scheduler error:", err.message);
-    }
-  }, 60_000); // every 60 seconds
-
-  console.log("🕐 Provisioning retry scheduler started (60s interval)");
-
-  // Expiry alerts + MikroTik cleanup
+  // Expiry alerts + MikroTik cleanup (owns all scheduled jobs including provisioning queue)
   startScheduler(db);
 });

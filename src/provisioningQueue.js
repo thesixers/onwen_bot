@@ -16,10 +16,10 @@ export async function enqueueProvisioning(
   await db.query(
     `
         INSERT INTO provisioning_queue
-            (user_id, phone, mikrotik_profile, plan_name, pin, next_retry_at)
-        VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '1 minute')
+            (user_id, phone, mikrotik_profile, plan_name, pin, duration_str, next_retry_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '1 minute')
     `,
-    [userId, phone, mikrotikProfile, planName, pin],
+    [userId, phone, mikrotikProfile, planName, pin, durationStr || null],
   );
 
   console.log(`📋 Provisioning queued for ticket ${pin} (${phone}) — will retry automatically`);
@@ -31,11 +31,10 @@ export async function enqueueProvisioning(
  */
 export async function processPendingQueue(db) {
   const due = await db.query(`
-        SELECT pq.*, pl.duration_str 
-        FROM provisioning_queue pq
-        LEFT JOIN plans pl ON pl.mikrotik_profile = pq.mikrotik_profile
-        WHERE pq.status IN ('pending', 'abandoned') AND pq.next_retry_at <= NOW()
-        ORDER BY pq.next_retry_at ASC
+        SELECT *
+        FROM provisioning_queue
+        WHERE status IN ('pending', 'abandoned') AND next_retry_at <= NOW()
+        ORDER BY next_retry_at ASC
         LIMIT 10
     `);
 

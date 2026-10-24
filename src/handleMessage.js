@@ -247,7 +247,7 @@ export async function handleMessage(
         if (!config.allowPayment) {
           await sendMessage(
             phone,
-            `Payment gateway is under maintainance please come back later`
+            `Payment gateway is under maintenance, please come back later`
           );
           return;
         }

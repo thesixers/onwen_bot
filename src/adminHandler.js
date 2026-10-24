@@ -10,6 +10,7 @@ import {
   resolveDurationStr 
 } from "./mikrotik.js";
 import { generateUniquePin } from "./fulfillPayment.js";
+import { enqueueProvisioning } from "./provisioningQueue.js";
 import { sendMessage } from "./messaging.js";
 import config from "./config.js";
 
@@ -142,22 +143,23 @@ export async function handleAdminMessage(platform, remoteId, from, text, db) {
     const page = Math.max(1, parseInt(parts[1], 10) || 1);
     const offset = (page - 1) * PAGE_SIZE;
 
+    const countRes = await db.query("SELECT COUNT(*) FROM subscriptions");
+    const total = parseInt(countRes.rows[0].count, 10);
+    const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+
     const res = await db.query(
       `
-        SELECT DISTINCT ON (s.pin) s.pin, pl.name AS plan_name, pl.price, s.created_at, s.status, u.phone
+        SELECT s.pin, pl.name AS plan_name, pl.price, s.created_at, s.status, u.phone
         FROM subscriptions s
         JOIN plans pl ON pl.id = s.plan_id
         LEFT JOIN users u ON u.id = s.user_id
-        ORDER BY s.pin, s.created_at DESC
+        ORDER BY s.created_at DESC
+        LIMIT $1 OFFSET $2
       `,
+      [PAGE_SIZE, offset],
     );
 
-    // Sort and paginate in JS after deduplication
-    const allRows = res.rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    const total = allRows.length;
-    const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
-    const paginatedRows = allRows.slice(offset, offset + PAGE_SIZE);
-
+    const paginatedRows = res.rows;
     if (!paginatedRows.length) {
       await sendMessage(from, `No tickets found on page ${page}.`);
       return true;
@@ -553,10 +555,24 @@ async function executeGenerateTicket(from, plan, cleanPhone, db) {
       [userId, plan.id, pin],
     );
 
-    // 3. Provision on MikroTik with guaranteed limit-uptime
+    // 3. Provision on MikroTik — queue for retry if router is offline
     const comment = buildMikrotikComment(cleanPhone, plan.name);
     const limitUptime = resolveDurationStr(plan);
-    await provisionHotspotUser(pin, plan.mikrotik_profile, comment, limitUptime);
+    let provisioned = false;
+    try {
+      await provisionHotspotUser(pin, plan.mikrotik_profile, comment, limitUptime);
+      provisioned = true;
+    } catch (provErr) {
+      console.error(`Admin ticket: MikroTik offline for PIN ${pin} — queuing:`, provErr.message);
+      await enqueueProvisioning(db, {
+        userId,
+        phone: cleanPhone,
+        mikrotikProfile: plan.mikrotik_profile,
+        planName: plan.name,
+        pin,
+        durationStr: limitUptime,
+      });
+    }
 
     // 4. Send to user if phone provided
     if (cleanPhone) {
@@ -582,7 +598,9 @@ async function executeGenerateTicket(from, plan, cleanPhone, db) {
       `📦 Plan: *${plan.name}* (₦${Number(plan.price).toLocaleString()})\n` +
       `🔑 *Login PIN:* \`${pin}\`\n` +
       (cleanPhone ? `📱 Sent to: +${cleanPhone}\n` : "") +
-      `✅ Provisioned on MikroTik (${plan.mikrotik_profile})\n` +
+      (provisioned
+        ? `✅ Provisioned on MikroTik (${plan.mikrotik_profile})\n`
+        : `⚠️ Router offline — PIN queued, will provision automatically\n`) +
       `⏳ Countdown starts on user's first login.`,
     );
     return true;

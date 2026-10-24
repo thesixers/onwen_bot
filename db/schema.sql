@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS provisioning_queue (
     mikrotik_profile VARCHAR(100) NOT NULL,
     plan_name        VARCHAR(225),
     pin              VARCHAR(10) NOT NULL,        -- Pre-generated PIN
+    duration_str     VARCHAR(50),                 -- MikroTik limit-uptime (e.g. '1d 00:00:00')
     attempts         INTEGER DEFAULT 0,
     max_attempts     INTEGER DEFAULT 10,
     status           VARCHAR(20) DEFAULT 'pending', -- pending | completed | abandoned
@@ -127,6 +128,7 @@ CREATE TABLE IF NOT EXISTS provisioning_queue (
     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_prov_queue_pending ON provisioning_queue (status, next_retry_at);
+ALTER TABLE provisioning_queue ADD COLUMN IF NOT EXISTS duration_str VARCHAR(50);
 
 -- Offline Message Queue Table
 CREATE TABLE IF NOT EXISTS message_queue (

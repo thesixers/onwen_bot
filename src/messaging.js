@@ -23,7 +23,7 @@ async function sendViaWhatsApp(jid, text) {
 
   try {
     await waSock.sendPresenceUpdate("composing", jid);
-    const delay = Math.min(3000, 500 + text.length * 30);
+    const delay = Math.min(1000, 200 + text.length * 10);
     await new Promise((resolve) => setTimeout(resolve, delay));
     await waSock.sendPresenceUpdate("paused", jid);
   } catch (err) {

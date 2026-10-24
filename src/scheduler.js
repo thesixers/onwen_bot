@@ -97,6 +97,7 @@ async function activateNewLogins(db) {
       LEFT JOIN users u ON u.id = s.user_id
       WHERE s.status = 'active'
         AND s.start_time IS NULL
+        AND s.expiry_time IS NULL
       LIMIT 50
     `);
 
@@ -161,8 +162,8 @@ async function activateNewLogins(db) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Finds active subscriptions that have been activated (start_time IS NOT NULL)
 // whose wall-clock expiry_time has passed.
-// Double-checks that the user actually used time on MikroTik before removal.
-// Removes the PIN from MikroTik, marks DB expired, and notifies user.
+// Kicks active sessions, clears cookies, removes user from MikroTik, marks expired,
+// and notifies user.
 // ─────────────────────────────────────────────────────────────────────────────
 async function expireOverdueTickets(db) {
   try {
@@ -186,22 +187,21 @@ async function expireOverdueTickets(db) {
 
     for (const sub of rows) {
       try {
-        // Safety check: verify router state
         const pinStr = String(sub.pin);
-        const mkUser = await getHotspotUser(pinStr);
-        if (mkUser && (!mkUser.uptime || mkUser.uptime === "0s" || mkUser.uptime === "00:00:00")) {
-          // Extra guard: If user has 0 uptime on router, they never actually used it!
-          // Reset them to unactivated state so they don't lose their ticket.
-          console.warn(`⚠️ Ticket PIN ${pinStr} has 0 uptime on router — resetting to unactivated state.`);
-          await db.query(`UPDATE subscriptions SET start_time = NULL, expiry_time = NULL WHERE id = $1`, [sub.id]);
-          continue;
+
+        // 1. Kick any active session immediately so connection is cut off
+        try {
+          await removeActiveSessions(pinStr);
+        } catch (err) {
+          console.warn(`⚠️ Could not remove active sessions for PIN ${pinStr}:`, err.message);
         }
 
-        // 1. Kick any active session
-        await removeActiveSessions(pinStr);
-
-        // 2. Remove from MikroTik (silently handles already-removed users)
-        await removeHotspotUser(pinStr);
+        // 2. Remove user and MAC cookies from MikroTik
+        try {
+          await removeHotspotUser(pinStr);
+        } catch (err) {
+          console.warn(`⚠️ Could not remove MikroTik user PIN ${pinStr}:`, err.message);
+        }
 
         // 3. Mark expired in DB
         await db.query(
@@ -232,6 +232,71 @@ async function expireOverdueTickets(db) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Job D — Send expiry warning alerts before plan runs out (Runs every 2 minutes)
+// ─────────────────────────────────────────────────────────────────────────────
+// Finds active subscriptions nearing their expiry time where alert_sent is false.
+// Short plans (<= 1 hour): alert sent ~10 minutes before expiry.
+// Standard plans (> 1 hour): alert sent ~1 hour before expiry.
+// ─────────────────────────────────────────────────────────────────────────────
+async function sendExpiryAlerts(db) {
+  try {
+    const { rows } = await db.query(`
+      SELECT s.id, s.pin, s.expiry_time, u.phone, pl.name AS plan_name, pl.duration_days
+      FROM subscriptions s
+      JOIN users u  ON u.id  = s.user_id
+      JOIN plans pl ON pl.id = s.plan_id
+      WHERE s.status = 'active'
+        AND s.start_time IS NOT NULL
+        AND s.expiry_time IS NOT NULL
+        AND s.expiry_time > NOW()
+        AND (s.alert_sent IS FALSE OR s.alert_sent IS NULL)
+        AND (
+          (pl.duration_days <= 0.1 AND s.expiry_time <= NOW() + INTERVAL '10 minutes')
+          OR
+          (pl.duration_days > 0.1 AND s.expiry_time <= NOW() + INTERVAL '1 hour')
+        )
+      ORDER BY s.expiry_time ASC
+      LIMIT 20
+      FOR UPDATE OF s SKIP LOCKED
+    `);
+
+    if (!rows.length) return;
+
+    console.log(`⚠️ Expiry alert job: found ${rows.length} ticket(s) nearing expiry`);
+
+    for (const sub of rows) {
+      try {
+        await db.query(
+          `UPDATE subscriptions SET alert_sent = true WHERE id = $1`,
+          [sub.id],
+        );
+
+        if (sub.phone) {
+          const formattedExpiry = new Date(sub.expiry_time).toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          await sendMessage(
+            sub.phone,
+            `⚠️ *${config.ispName} Expiry Warning*\n\n` +
+            `Your *${sub.plan_name}* ticket (PIN: \`${sub.pin}\`) will expire soon at *${formattedExpiry}*.\n\n` +
+            `To stay connected without interruption, send *Hi* to purchase a new plan! 🚀`,
+            { sendToBoth: true },
+          );
+
+          console.log(`📢 Sent expiry alert to ${sub.phone} for PIN ${sub.pin}`);
+        }
+      } catch (err) {
+        console.error(`❌ Failed to send expiry alert for ticket PIN ${sub.pin}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error("Scheduler: sendExpiryAlerts error:", err.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // START SCHEDULER
 // ─────────────────────────────────────────────────────────────────────────────
 export function startScheduler(db) {
@@ -258,7 +323,14 @@ export function startScheduler(db) {
     );
   }, 2 * 60 * 1000);
 
-  // 4. Run offline message retries every 3 minutes
+  // 4. Run expiry warning alerts every 2 minutes
+  setInterval(() => {
+    sendExpiryAlerts(db).catch((err) =>
+      console.error("Error in sendExpiryAlerts:", err.message),
+    );
+  }, 2 * 60 * 1000);
+
+  // 5. Run offline message retries every 3 minutes
   setInterval(() => {
     retryOfflineMessages(db).catch((err) =>
       console.error("Error in retryOfflineMessages:", err.message),

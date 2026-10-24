@@ -25,12 +25,13 @@ async function seed() {
 
     await db.query(`
       INSERT INTO plans (id, name, price, duration_days, duration_str, speed_limit, shared_users, mikrotik_profile) VALUES
-      (1, '1 Day', 500, 1.00,  '1d 00:00:00', '10M/10M', 1, 'daily-1-device'),
-      (2, '1 Week', 2700, 7.00,  '7d 00:00:00', '10M/10M', 1, 'weekly-1-device'),
-      (3, '1 Week (2 Devices)', 5000, 7.00,  '7d 00:00:00', '10M/10M', 2, 'weekly-2-device'),
-      (4, '1 Month', 10000, 31.00,  '31d 00:00:00', '10M/10M', 1, 'monthly-1-device'),
-      (5, '1 Month (2 Devices)', 18000, 31.00,  '31d 00:00:00', '10M/10M', 2, 'monthly-2-device'),
-      (6, '1 Month (3 Devices)', 25500, 31.00,  '31d 00:00:00', '10M/10M', 3, 'monthly-3-device')
+      (1, '1 Day',                500,   1.00,   '1d 00:00:00',  '10M/10M', 1, 'daily-1-device'),
+      (2, '1 Week',              2700,   7.00,   '7d 00:00:00',  '10M/10M', 1, 'weekly-1-device'),
+      (3, '1 Week (2 Devices)',  5000,   7.00,   '7d 00:00:00',  '10M/10M', 2, 'weekly-2-device'),
+      (4, '1 Month',            10000,  31.00,  '31d 00:00:00',  '10M/10M', 1, 'monthly-1-device'),
+      (5, '1 Month (2 Devices)',18000,  31.00,  '31d 00:00:00',  '10M/10M', 2, 'monthly-2-device'),
+      (6, '1 Month (3 Devices)',25500,  31.00,  '31d 00:00:00',  '10M/10M', 3, 'monthly-3-device'),
+      (7, '1 Hour',               200,   0.042, '0d 01:00:00',  '10M/10M', 1, '1-hour 1 device')
       ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           price = EXCLUDED.price,
@@ -44,7 +45,7 @@ async function seed() {
     // Clean up any old unused plan IDs (e.g. previous ID 7)
     await db.query(`
       DELETE FROM plans 
-      WHERE id > 6 
+      WHERE id > 7 
         AND id NOT IN (SELECT DISTINCT plan_id FROM subscriptions WHERE plan_id IS NOT NULL)
         AND id NOT IN (SELECT DISTINCT plan_id FROM chat_sessions WHERE plan_id IS NOT NULL)
     `);
