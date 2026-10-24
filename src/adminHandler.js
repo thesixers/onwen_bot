@@ -7,7 +7,8 @@ import {
   getHotspotUser,
   updateHotspotUser,
   removeHotspotCookies,
-  resolveDurationStr 
+  resolveDurationStr,
+  resolveRouterLimitUptime
 } from "./mikrotik.js";
 import { generateUniquePin } from "./fulfillPayment.js";
 import { enqueueProvisioning } from "./provisioningQueue.js";
@@ -557,7 +558,7 @@ async function executeGenerateTicket(from, plan, cleanPhone, db) {
 
     // 3. Provision on MikroTik — queue for retry if router is offline
     const comment = buildMikrotikComment(cleanPhone, plan.name);
-    const limitUptime = resolveDurationStr(plan);
+    const limitUptime = resolveRouterLimitUptime(plan);
     let provisioned = false;
     try {
       await provisionHotspotUser(pin, plan.mikrotik_profile, comment, limitUptime);

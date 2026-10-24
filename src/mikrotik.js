@@ -62,6 +62,51 @@ export function resolveDurationStr(plan) {
 }
 
 /**
+ * Resolves the router limit-uptime string, scaled by shared_users.
+ * In MikroTik, when multiple devices share a single PIN, the router adds together
+ * the uptime of each connected device. Multiplying limit-uptime by shared_users
+ * ensures each device can be connected for the full plan duration without
+ * hitting the router's aggregate uptime limit prematurely.
+ * The bot's wall-clock scheduler independently enforces the calendar expiration.
+ *
+ * @param {object} plan
+ * @returns {string|null}
+ */
+export function resolveRouterLimitUptime(plan) {
+  const baseStr = resolveDurationStr(plan);
+  if (!baseStr) return null;
+
+  const sharedUsers = Math.max(1, parseInt(plan?.shared_users, 10) || 1);
+  if (sharedUsers <= 1) return baseStr;
+
+  const match = baseStr.match(/(?:(\d+)d)?\s*(\d{1,2}):(\d{2}):(\d{2})/);
+  if (match) {
+    const d = parseInt(match[1] || "0", 10);
+    const h = parseInt(match[2] || "0", 10);
+    const m = parseInt(match[3] || "0", 10);
+    const s = parseInt(match[4] || "0", 10);
+    const totalSecs = (d * 86400 + h * 3600 + m * 60 + s) * sharedUsers;
+
+    const scaledDays = Math.floor(totalSecs / 86400);
+    const remAfterDays = totalSecs % 86400;
+    const scaledHours = Math.floor(remAfterDays / 3600);
+    const remAfterHours = remAfterDays % 3600;
+    const scaledMins = Math.floor(remAfterHours / 60);
+    const scaledSecs = remAfterHours % 60;
+
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${scaledDays}d ${pad(scaledHours)}:${pad(scaledMins)}:${pad(scaledSecs)}`;
+  }
+
+  const days = Number(plan?.duration_days);
+  if (!isNaN(days) && days > 0) {
+    return `${Math.round(days * sharedUsers)}d 00:00:00`;
+  }
+
+  return baseStr;
+}
+
+/**
  * Calculates the wall-clock expiry Date given a plan and starting date.
  * @param {object} plan
  * @param {Date} [fromDate]

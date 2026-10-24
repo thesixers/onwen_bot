@@ -1,4 +1,4 @@
-import { provisionHotspotUser, buildMikrotikComment, generatePin, resolveDurationStr } from "./mikrotik.js";
+import { provisionHotspotUser, buildMikrotikComment, generatePin, resolveDurationStr, resolveRouterLimitUptime } from "./mikrotik.js";
 import { enqueueProvisioning } from "./provisioningQueue.js";
 import { sendMessage } from "./messaging.js";
 import config from "./config.js";
@@ -155,7 +155,7 @@ export async function provisionOrQueueTicket(
   suppressSuccessMessage = false,
 ) {
   const comment = buildMikrotikComment(user.phone, plan.name);
-  const limitUptime = resolveDurationStr(plan);
+  const limitUptime = resolveRouterLimitUptime(plan);
 
   try {
     await provisionHotspotUser(
